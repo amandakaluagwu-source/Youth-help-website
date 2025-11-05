@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Youth Help Platform — Prototype</title>
+  <meta name="description" content="Prototype where users post requests for help and others can respond. Powered by Supabase." />
+  <style>
+    :root{--accent:#0ea5a4;--muted:#6b7280;--bg:#f8fafc}
+    body{font-family:Inter,system-ui,Arial;margin:0;background:var(--bg);color:#0f172a}
+    header{background:#fff;padding:16px 20px;box-shadow:0 2px 8px rgba(15,23,42,.04);position:sticky;top:0;z-index:50}
+    .container{max-width:1000px;margin:0 auto;padding:18px}
+    .flex{display:flex;gap:12px;align-items:center}
+    .brand{font-weight:800;letter-spacing:-0.02em}
+    .card{background:#fff;padding:16px;border-radius:12px;box-shadow:0 6px 20px rgba(12,18,27,.04)}
+    input,textarea,select,button{font:inherit}
+    .muted{color:var(--muted)}
+    .posts{display:grid;grid-template-columns:1fr;gap:12px;margin-top:16px}
+    .post{padding:12px;border-radius:10px;border:1px solid rgba(12,18,27,.04)}
+    .small{font-size:13px}
+    .tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef2f2;margin-right:6px;font-size:12px}
+    .search{display:flex;gap:8px}
+    .grow{flex:1}
+    .hidden{display:none}
+    .right{margin-left:auto}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container flex">
+      <div class="brand">YouthHelp</div>
+      <div class="muted small">connect — collaborate — create</div>
+      <div class="right" id="auth-area"></div>
+    </div>
+  </header>
+
+  <main class="container" style="padding-top:18px">
+    <section class="card">
+      <h2>Create a post</h2>
+      <div id="create-area">
+        <input id="title" placeholder="Title" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc" />
+        <textarea id="body" rows="4" placeholder="Describe your project..." style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px solid #ccc"></textarea>
+        <input id="tags" placeholder="Tags (comma separated)" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px solid #ccc" />
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="publish" style="background:var(--accent);color:#fff;padding:10px 12px;border-radius:8px;border:0">Publish</button>
+          <button id="clear" style="padding:10px 12px;border-radius:8px">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <section style="margin-top:14px">
+      <div class="card" style="padding:12px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="search" placeholder="Search posts" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ccc" />
+          <select id="sort">
+            <option value="new">Newest</option>
+            <option value="old">Oldest</option>
+          </select>
+        </div>
+        <div class="posts" id="posts"></div>
+      </div>
+    </section>
+
+    <section style="margin-top:14px">
+      <div class="card" id="post-view" style="display:none"></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.31.0/dist/supabase.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://REPLACE_WITH_YOUR_PROJECT.supabase.co';
+    const SUPABASE_ANON_KEY = 'REPLACE_WITH_YOUR_ANON_KEY';
+    const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const authArea=document.getElementById('auth-area'),
+          titleInput=document.getElementById('title'),
+          bodyInput=document.getElementById('body'),
+          tagsInput=document.getElementById('tags'),
+          postsEl=document.getElementById('posts'),
+          postView=document.getElementById('post-view'),
+          searchInput=document.getElementById('search'),
+          sortSelect=document.getElementById('sort');
+    let currentUser=null;
+
+    async function renderAuth(){
+      const { data:{user} }=await supabase.auth.getUser();currentUser=user;authArea.innerHTML='';
+      if(!user){let b=document.createElement('button');b.textContent='Sign in';b.onclick=signin;authArea.append(b);}
+      else{authArea.innerHTML=`<span class='small muted'>${user.email}</span> <button onclick="supabase.auth.signOut().then(()=>location.reload())">Sign out</button>`;}
+    }
+    async function signin(){
+      const email=prompt('Enter your email'); if(!email)return;
+      const {error}=await supabase.auth.signInWithOtp({email});
+      alert(error?error.message:'Check your email for login link.');
+    }
+
+    document.getElementById('publish').onclick=async()=>{
+      if(!currentUser)return alert('Sign in first');
+      const t=titleInput.value.trim(),b=bodyInput.value.trim(),tags=tagsInput.value.split(',').map(x=>x.trim());
+      if(!t||!b)return alert('Fill all fields');
+      const {error}=await supabase.from('posts').insert([{user_id:currentUser.id,username:currentUser.email,title:t,body:b,tags}]);
+      if(error)alert(error.message); else load();
+    };
+    document.getElementById('clear').onclick=()=>{titleInput.value='';bodyInput.value='';tagsInput.value='';}
+
+    async function load(){
+      const q=(searchInput.value||'').toLowerCase();
+      const {data}=await supabase.from('posts').select('*').order('created_at',{ascending:sortSelect.value==='old'});
+      const filtered=(data||[]).filter(p=>p.title.toLowerCase().includes(q)||p.body.toLowerCase().includes(q));
+      postsEl.innerHTML=filtered.map(p=>`<div class='post'><b>${p.title}</b><br><span class='small muted'>${p.username}</span><p>${p.body}</p></div>`).join('')||'<div class="muted">No posts</div>';
+    }
+    searchInput.oninput=load;sortSelect.onchange=load;
+
+    (async()=>{const {data:{session}}=await supabase.auth.getSession();if(session)currentUser=session.user;await renderAuth();await load();})();
+  </script>
+</body>
+</html>
